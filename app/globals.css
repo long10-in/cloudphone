@@ -21,6 +21,8 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -55,6 +57,9 @@
   --border: oklch(0.3 0.012 240);
   --input: oklch(0.3 0.012 240);
   --ring: oklch(0.78 0.16 165);
+
+  --destructive: oklch(0.62 0.21 18);
+  --destructive-foreground: oklch(0.97 0.005 240);
 }
 
 @layer base {

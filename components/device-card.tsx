@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import Link from "next/link"
 import {
   Smartphone,
   Play,
@@ -14,6 +15,7 @@ import {
   Check,
   X,
   Loader2,
+  Globe,
 } from "lucide-react"
 import { setDeviceStatus, renameDevice } from "@/app/actions/devices"
 
@@ -130,7 +132,15 @@ export function DeviceCard({ device }: { device: Device }) {
         </div>
       </dl>
 
-      <div className="mt-5 flex items-center gap-2 border-t border-border/60 pt-4">
+      <Link
+        href={`/device/${device.id}`}
+        className="mt-5 inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+      >
+        <Globe className="h-4 w-4" />
+        Mở trình duyệt bảo mật
+      </Link>
+
+      <div className="mt-3 flex items-center gap-2 border-t border-border/60 pt-4">
         {device.status === "running" ? (
           <button
             onClick={() => changeStatus("stopped")}
