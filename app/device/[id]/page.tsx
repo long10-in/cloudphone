@@ -4,9 +4,9 @@ import Link from "next/link"
 import { ArrowLeft, Cpu, MemoryStick, HardDrive, MapPin } from "lucide-react"
 import { requireUser } from "@/lib/session"
 import { db } from "@/lib/db"
-import { device, browserSession } from "@/lib/db/schema"
+import { device, browserSession, browserProfile } from "@/lib/db/schema"
 import { DashboardNav } from "@/components/dashboard-nav"
-import { SecureBrowser } from "@/components/secure-browser"
+import { DeviceWorkspace } from "@/components/device-workspace"
 
 export default async function DevicePage({
   params,
@@ -38,6 +38,18 @@ export default async function DevicePage({
       sites = 0
     }
   }
+
+  const profileRows = await db
+    .select()
+    .from(browserProfile)
+    .where(eq(browserProfile.deviceId, deviceId))
+    .orderBy(browserProfile.createdAt)
+  const profiles = profileRows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    siteCount: r.siteCount,
+    createdAt: r.createdAt.toISOString(),
+  }))
 
   return (
     <div className="min-h-screen bg-background">
@@ -75,7 +87,13 @@ export default async function DevicePage({
         </div>
 
         <div className="mt-6">
-          <SecureBrowser deviceId={d.id} deviceName={d.name} initialSites={sites} />
+          <DeviceWorkspace
+            deviceId={d.id}
+            deviceName={d.name}
+            androidVersion={d.androidVersion}
+            initialSites={sites}
+            initialProfiles={profiles}
+          />
         </div>
       </main>
     </div>
