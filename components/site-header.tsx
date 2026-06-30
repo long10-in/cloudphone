@@ -38,16 +38,16 @@ export function SiteHeader() {
 
         <div className="hidden items-center gap-3 md:flex">
           <a
-            href="#"
+            href="/sign-in"
             className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
             Đăng nhập
           </a>
           <a
-            href="#pricing"
+            href="/sign-in"
             className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
           >
-            Dùng thử miễn phí
+            Vào bảng điều khiển
           </a>
         </div>
 
@@ -75,11 +75,11 @@ export function SiteHeader() {
               </a>
             ))}
             <a
-              href="#pricing"
+              href="/sign-in"
               onClick={() => setOpen(false)}
               className="mt-2 rounded-full bg-primary px-5 py-2.5 text-center text-sm font-semibold text-primary-foreground"
             >
-              Dùng thử miễn phí
+              Đăng nhập
             </a>
           </nav>
         </div>
