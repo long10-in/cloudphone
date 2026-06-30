@@ -44,16 +44,16 @@ export function DashboardNav({
 
         <div className="flex items-center gap-3">
           {role === "admin" && (
-            <nav className="hidden items-center gap-1 sm:flex">
+            <nav className="flex items-center gap-1">
               <Link
                 href="/dashboard"
-                className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="rounded-lg px-2.5 py-1.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground sm:px-3"
               >
-                Thiết bị của tôi
+                Dùng website
               </Link>
               <Link
                 href="/admin"
-                className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="rounded-lg px-2.5 py-1.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground sm:px-3"
               >
                 Quản trị
               </Link>

@@ -76,3 +76,21 @@ export const device = pgTable("device", {
   lastActiveAt: timestamp("lastActiveAt").notNull().defaultNow(),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
 })
+
+export const browserSession = pgTable("browser_session", {
+  deviceId: integer("deviceId").primaryKey(),
+  userId: text("userId").notNull(),
+  cookies: text("cookies").notNull().default("{}"),
+  userAgent: text("userAgent"),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+})
+
+export const browserProfile = pgTable("browser_profile", {
+  id: serial("id").primaryKey(),
+  deviceId: integer("deviceId").notNull(),
+  userId: text("userId").notNull(),
+  name: text("name").notNull(),
+  cookies: text("cookies").notNull().default("{}"),
+  siteCount: integer("siteCount").notNull().default(0),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+})
