@@ -94,3 +94,11 @@ export const browserProfile = pgTable("browser_profile", {
   siteCount: integer("siteCount").notNull().default(0),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
 })
+
+export const cloudBrowser = pgTable("cloud_browser", {
+  deviceId: integer("deviceId").primaryKey(),
+  userId: text("userId").notNull(),
+  contextId: text("contextId"),
+  sessionId: text("sessionId"),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+})
