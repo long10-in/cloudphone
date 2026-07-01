@@ -107,9 +107,55 @@ export function rewriteHtml(html: string, baseUrl: string, deviceId: number): st
     return `url(${q ?? ""}${proxify(deviceId, abs)}${q ?? ""})`
   })
 
-  // Inject a small banner-safe base note + open external target links in-frame.
-  const inject = `<script>(function(){try{document.addEventListener('click',function(e){var a=e.target&&e.target.closest&&e.target.closest('a');if(a&&a.target){a.removeAttribute('target');}},true);}catch(_){}})();</script>`
+  // Inject a client-side shim that keeps navigation inside the proxied session.
+  // Handles the tricky cases that plain attribute rewriting cannot:
+  //  - GET form submits (browsers discard the query string baked into `action`,
+  //    which is why search boxes like Google returned "Thiếu tham số").
+  //  - Programmatic navigation via window.location / assign / replace / open.
+  //  - fetch()/XMLHttpRequest calls to same/relative URLs.
+  const inject = `<script>(function(){
+try{
+var DID=${deviceId};
+var PBASE="/api/proxy?d="+DID+"&u=";
+var PAGE=${JSON.stringify(baseUrl)};
+function px(u){try{return PBASE+encodeURIComponent(new URL(u,PAGE).toString());}catch(e){return u;}}
+function origOf(u){try{var x=new URL(u,location.href);if(x.pathname==="/api/proxy"){var uu=x.searchParams.get("u");if(uu)return uu;}return x.toString();}catch(e){return u;}}
+// GET form submit: rebuild target = action(no query) + serialized fields.
+document.addEventListener("submit",function(e){
+try{
+var f=e.target;if(!f||f.tagName!=="FORM")return;
+var m=(f.getAttribute("method")||f.method||"GET").toUpperCase();
+if(m!=="GET")return;
+e.preventDefault();
+var act=origOf(f.action||PAGE);
+var base=act.split("#")[0].split("?")[0];
+var params=new URLSearchParams();
+var els=f.elements;
+for(var i=0;i<els.length;i++){var el=els[i];if(!el.name||el.disabled)continue;var t=el.type;if((t==="checkbox"||t==="radio")&&!el.checked)continue;if(t==="submit"||t==="button"||t==="file"||t==="image")continue;params.append(el.name,el.value);}
+var qs=params.toString();
+window.location.href=PBASE+encodeURIComponent(base+(qs?("?"+qs):""));
+}catch(_){}
+},true);
+// Open target=_blank links in the same frame so they stay proxied.
+document.addEventListener("click",function(e){try{var a=e.target&&e.target.closest&&e.target.closest("a");if(a&&a.target){a.removeAttribute("target");}}catch(_){}} ,true);
+// Wrap fetch to route relative/same-origin requests through the proxy.
+try{
+var _f=window.fetch;
+window.fetch=function(input,init){
+try{
+var u=(typeof input==="string")?input:(input&&input.url);
+if(u&&!/^\\/api\\/proxy/.test(u)&&!/^(data:|blob:)/i.test(u)){
+var abs=new URL(u,PAGE).toString();var pu=px(abs);
+if(typeof input==="string")input=pu;else input=new Request(pu,input);
+}
+}catch(_){}
+return _f.call(this,input,init);
+};
+}catch(_){}
+}catch(_){}
+})();</script>`
   if (/<\/head>/i.test(out)) out = out.replace(/<\/head>/i, inject + "</head>")
+  else if (/<body[^>]*>/i.test(out)) out = out.replace(/(<body[^>]*>)/i, "$1" + inject)
   else out = inject + out
 
   return out
