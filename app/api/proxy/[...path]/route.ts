@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { and, eq } from "drizzle-orm"
+import { eq } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { device, browserSession } from "@/lib/db/schema"
 import { getSession } from "@/lib/session"
@@ -10,6 +10,8 @@ import {
   mergeSetCookies,
   rewriteHtml,
   rewriteCss,
+  proxify,
+  parseProxyPath,
 } from "@/lib/proxy"
 
 export const dynamic = "force-dynamic"
@@ -56,12 +58,12 @@ async function saveJar(deviceId: number, jar: CookieJar) {
 }
 
 async function handle(req: NextRequest, method: "GET" | "POST") {
-  const deviceId = Number(req.nextUrl.searchParams.get("d"))
-  const target = req.nextUrl.searchParams.get("u")
-
-  if (!deviceId || !target) {
-    return NextResponse.json({ error: "Thiếu tham số" }, { status: 400 })
+  // Reconstruct the target from the raw pathname so percent-encoding is kept.
+  const parsed = parseProxyPath(req.nextUrl.pathname, req.nextUrl.search)
+  if (!parsed) {
+    return NextResponse.json({ error: "URL không hợp lệ" }, { status: 400 })
   }
+  const { deviceId, target } = parsed
 
   const authz = await authorizeDevice(deviceId)
   if ("error" in authz) {
@@ -125,9 +127,7 @@ async function handle(req: NextRequest, method: "GET" | "POST") {
     const loc = upstream.headers.get("location")
     if (loc) {
       const abs = new URL(loc, targetUrl).toString()
-      return NextResponse.redirect(
-        new URL(`/api/proxy?d=${deviceId}&u=${encodeURIComponent(abs)}`, req.nextUrl.origin),
-      )
+      return NextResponse.redirect(new URL(proxify(deviceId, abs), req.nextUrl.origin))
     }
   }
 

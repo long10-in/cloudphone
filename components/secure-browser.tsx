@@ -34,7 +34,12 @@ const SHORTCUTS = [
 ]
 
 function proxify(deviceId: number, url: string) {
-  return `/api/proxy?d=${deviceId}&u=${encodeURIComponent(url)}`
+  try {
+    const u = new URL(url)
+    return `/api/proxy/${deviceId}/${u.protocol.replace(":", "")}/${u.host}${u.pathname}${u.search}${u.hash}`
+  } catch {
+    return url
+  }
 }
 
 function normalizeInput(raw: string): string {
@@ -42,7 +47,7 @@ function normalizeInput(raw: string): string {
   if (!v) return ""
   if (/^https?:\/\//i.test(v)) return v
   if (/^[\w-]+(\.[\w-]+)+(\/.*)?$/.test(v)) return "https://" + v
-  return "https://duckduckgo.com/?q=" + encodeURIComponent(v)
+  return "https://www.google.com/search?q=" + encodeURIComponent(v)
 }
 
 export function SecureBrowser({
@@ -103,10 +108,11 @@ export function SecureBrowser({
     try {
       const loc = iframeRef.current?.contentWindow?.location
       if (loc) {
-        const u = new URLSearchParams(loc.search).get("u")
-        if (u) {
-          setCurrentUrl(u)
-          setAddress(u)
+        const m = loc.pathname.match(/^\/api\/proxy\/\d+\/(https?)\/(.+)$/)
+        if (m) {
+          const real = `${m[1]}://${m[2]}${loc.search}${loc.hash}`
+          setCurrentUrl(real)
+          setAddress(real)
         }
       }
     } catch {
