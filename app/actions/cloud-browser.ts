@@ -1,0 +1,176 @@
+"use server"
+
+import { eq } from "drizzle-orm"
+import { headers } from "next/headers"
+import { db } from "@/lib/db"
+import { device, cloudBrowser } from "@/lib/db/schema"
+import { auth } from "@/lib/auth"
+import {
+  BROWSERBASE_ENABLED,
+  createContext,
+  deleteContext,
+  createSession,
+  isSessionAlive,
+  getLiveViewUrl,
+  navigateSession,
+  endSession,
+  bb,
+} from "@/lib/browserbase"
+
+async function getUser() {
+  const session = await auth.api.getSession({ headers: await headers() })
+  if (!session?.user) throw new Error("Unauthorized")
+  return session.user
+}
+
+// Verify the caller owns the device (or is admin) and return the connect URL.
+async function assertAccess(deviceId: number) {
+  const user = await getUser()
+  const rows = await db.select().from(device).where(eq(device.id, deviceId)).limit(1)
+  const d = rows[0]
+  if (!d) throw new Error("Không tìm thấy thiết bị")
+  if (d.userId !== user.id && user.role !== "admin") throw new Error("Forbidden")
+  return { user, device: d }
+}
+
+async function getRow(deviceId: number) {
+  const rows = await db
+    .select()
+    .from(cloudBrowser)
+    .where(eq(cloudBrowser.deviceId, deviceId))
+    .limit(1)
+  return rows[0] ?? null
+}
+
+export type CloudStatus = {
+  enabled: boolean
+  running: boolean
+  liveViewUrl: string | null
+}
+
+export async function getCloudStatus(deviceId: number): Promise<CloudStatus> {
+  await assertAccess(deviceId)
+  if (!BROWSERBASE_ENABLED) {
+    return { enabled: false, running: false, liveViewUrl: null }
+  }
+  const row = await getRow(deviceId)
+  if (row?.sessionId && (await isSessionAlive(row.sessionId))) {
+    const liveViewUrl = await getLiveViewUrl(row.sessionId)
+    return { enabled: true, running: true, liveViewUrl }
+  }
+  return { enabled: true, running: false, liveViewUrl: null }
+}
+
+// Start (or resume) a real cloud Chromium for this device.
+export async function startCloudBrowser(deviceId: number): Promise<CloudStatus> {
+  const { user } = await assertAccess(deviceId)
+  if (!BROWSERBASE_ENABLED) {
+    return { enabled: false, running: false, liveViewUrl: null }
+  }
+
+  let row = await getRow(deviceId)
+
+  // Reuse a live session if one is still running.
+  if (row?.sessionId && (await isSessionAlive(row.sessionId))) {
+    const liveViewUrl = await getLiveViewUrl(row.sessionId)
+    return { enabled: true, running: true, liveViewUrl }
+  }
+
+  // Ensure the device has its own persistent context (isolated identity).
+  let contextId = row?.contextId ?? null
+  if (!contextId) {
+    contextId = await createContext()
+  }
+
+  const session = await createSession(contextId)
+
+  if (row) {
+    await db
+      .update(cloudBrowser)
+      .set({ contextId, sessionId: session.sessionId, updatedAt: new Date() })
+      .where(eq(cloudBrowser.deviceId, deviceId))
+  } else {
+    await db.insert(cloudBrowser).values({
+      deviceId,
+      userId: user.id,
+      contextId,
+      sessionId: session.sessionId,
+    })
+  }
+
+  // Land on a neutral start page.
+  try {
+    await navigateSession(session.connectUrl, "https://www.google.com")
+  } catch {
+    // navigation is best-effort; the live view still opens
+  }
+
+  return { enabled: true, running: true, liveViewUrl: session.liveViewUrl }
+}
+
+async function connectUrlFor(sessionId: string): Promise<string> {
+  const s = await bb().sessions.retrieve(sessionId)
+  if (!s.connectUrl) throw new Error("Không lấy được kết nối phiên")
+  return s.connectUrl
+}
+
+export async function navigateCloud(
+  deviceId: number,
+  rawUrl: string,
+): Promise<{ url: string; title: string }> {
+  await assertAccess(deviceId)
+  const row = await getRow(deviceId)
+  if (!row?.sessionId || !(await isSessionAlive(row.sessionId))) {
+    throw new Error("Phiên trình duyệt chưa khởi động")
+  }
+
+  let target = rawUrl.trim()
+  if (!target) throw new Error("Vui lòng nhập địa chỉ")
+  // If it looks like a URL, normalize; otherwise treat as a Google search.
+  const looksLikeUrl = /^https?:\/\//i.test(target) || /^[\w-]+(\.[\w-]+)+/.test(target)
+  if (looksLikeUrl) {
+    if (!/^https?:\/\//i.test(target)) target = "https://" + target
+  } else {
+    target = "https://www.google.com/search?q=" + encodeURIComponent(target)
+  }
+
+  const connectUrl = await connectUrlFor(row.sessionId)
+  return navigateSession(connectUrl, target)
+}
+
+// Stop the session (keeps the context so logins persist next time).
+export async function stopCloudBrowser(deviceId: number): Promise<CloudStatus> {
+  await assertAccess(deviceId)
+  const row = await getRow(deviceId)
+  if (row?.sessionId) {
+    await endSession(row.sessionId)
+    await db
+      .update(cloudBrowser)
+      .set({ sessionId: null, updatedAt: new Date() })
+      .where(eq(cloudBrowser.deviceId, deviceId))
+  }
+  return { enabled: BROWSERBASE_ENABLED, running: false, liveViewUrl: null }
+}
+
+// Wipe all stored data: end session AND delete the persistent context.
+export async function resetCloudBrowser(deviceId: number): Promise<CloudStatus> {
+  const { user } = await assertAccess(deviceId)
+  const row = await getRow(deviceId)
+  if (row?.sessionId) {
+    await endSession(row.sessionId)
+  }
+  if (row?.contextId) {
+    await deleteContext(row.contextId)
+  }
+  // Fresh context for a clean identity next start.
+  const contextId = BROWSERBASE_ENABLED ? await createContext() : null
+  if (row) {
+    await db
+      .update(cloudBrowser)
+      .set({ contextId, sessionId: null, updatedAt: new Date() })
+      .where(eq(cloudBrowser.deviceId, deviceId))
+  } else {
+    await db.insert(cloudBrowser).values({ deviceId, userId: user.id, contextId })
+  }
+  return { enabled: BROWSERBASE_ENABLED, running: false, liveViewUrl: null }
+}
