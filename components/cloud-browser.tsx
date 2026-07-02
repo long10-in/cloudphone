@@ -38,7 +38,7 @@ export function CloudBrowser({
     getCloudStatus(deviceId)
       .then((s) => {
         setStatus(s)
-        setLoadError(null)
+        setLoadError(s.error ?? null)
       })
       .catch((e) => {
         // A real failure (DB/auth/API) — do NOT disguise it as "not configured".
@@ -53,6 +53,10 @@ export function CloudBrowser({
       try {
         const s = await startCloudBrowser(deviceId)
         setStatus(s)
+        if (s.error) {
+          setError(s.error)
+          return
+        }
         setAddress("https://www.google.com")
         setCurrentUrl("https://www.google.com")
       } catch (e) {
@@ -64,7 +68,9 @@ export function CloudBrowser({
   function handleStop() {
     startTransition(async () => {
       try {
-        setStatus(await stopCloudBrowser(deviceId))
+        const s = await stopCloudBrowser(deviceId)
+        setStatus(s)
+        if (s.error) setError(s.error)
       } catch (e) {
         setError(e instanceof Error ? e.message : "Lỗi khi dừng")
       }
@@ -75,7 +81,9 @@ export function CloudBrowser({
     if (!confirm("Xóa toàn bộ dữ liệu (cookie, đăng nhập) của thiết bị này?")) return
     startTransition(async () => {
       try {
-        setStatus(await resetCloudBrowser(deviceId))
+        const s = await resetCloudBrowser(deviceId)
+        setStatus(s)
+        if (s.error) setError(s.error)
       } catch (e) {
         setError(e instanceof Error ? e.message : "Lỗi khi xóa dữ liệu")
       }
@@ -89,6 +97,10 @@ export function CloudBrowser({
     startNav(async () => {
       try {
         const res = await navigateCloud(deviceId, address)
+        if (res.error) {
+          setError(res.error)
+          return
+        }
         setCurrentUrl(res.url)
         setAddress(res.url)
       } catch (err) {
@@ -104,6 +116,10 @@ export function CloudBrowser({
     startNav(async () => {
       try {
         const res = await navigateCloud(deviceId, url)
+        if (res.error) {
+          setError(res.error)
+          return
+        }
         setCurrentUrl(res.url)
         setAddress(res.url)
       } catch (err) {

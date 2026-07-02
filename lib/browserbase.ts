@@ -49,10 +49,11 @@ export type LiveSession = {
 }
 
 // Spin up a real Chromium session bound to the device's persistent context.
+// NOTE: no `keepAlive` — that flag is a paid-plan feature on Browserbase and
+// makes session creation fail with an API error on the free plan.
 export async function createSession(contextId: string): Promise<LiveSession> {
   const session = await bb().sessions.create({
     projectId: projectId(),
-    keepAlive: true,
     browserSettings: {
       context: { id: contextId, persist: true },
       blockAds: true,
