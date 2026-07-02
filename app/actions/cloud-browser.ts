@@ -13,6 +13,7 @@ import {
   isSessionAlive,
   getLiveViewUrl,
   navigateSession,
+  typeSession,
   endSession,
   bb,
 } from "@/lib/browserbase"
@@ -159,6 +160,25 @@ export async function navigateCloud(
 
     const connectUrl = await connectUrlFor(row.sessionId)
     return await navigateSession(connectUrl, target)
+  } catch (e) {
+    return { url: "", title: "", error: errMsg(e) }
+  }
+}
+
+// Type text into the focused field inside the live session (virtual keyboard).
+export async function typeIntoCloud(
+  deviceId: number,
+  text: string,
+  pressEnter = false,
+): Promise<{ url: string; title: string; error?: string | null }> {
+  try {
+    await assertAccess(deviceId)
+    const row = await getRow(deviceId)
+    if (!row?.sessionId || !(await isSessionAlive(row.sessionId))) {
+      return { url: "", title: "", error: "Phiên trình duyệt chưa khởi động" }
+    }
+    const connectUrl = await connectUrlFor(row.sessionId)
+    return await typeSession(connectUrl, text, pressEnter)
   } catch (e) {
     return { url: "", title: "", error: errMsg(e) }
   }

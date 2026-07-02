@@ -64,6 +64,9 @@ export type LiveSession = {
 export async function createSession(contextId: string): Promise<LiveSession> {
   const session = await bb().sessions.create({
     projectId: projectId(),
+    // Pin the browser to the region closest to our users (Singapore) to cut
+    // down the CDP stream round-trip latency that makes the live view feel laggy.
+    region: "ap-southeast-1",
     browserSettings: {
       context: { id: contextId, persist: true },
       blockAds: true,
@@ -119,6 +122,34 @@ export async function navigateSession(
     return { url: page.url(), title }
   } finally {
     // Detach without closing the remote browser so the session keeps running.
+    await browser.close()
+  }
+}
+
+// Type text (and optionally press Enter) into whatever element is currently
+// focused inside the live session. Browserbase's live view has no mobile
+// keyboard, so this lets users input text via a field in our own toolbar.
+export async function typeSession(
+  connectUrl: string,
+  text: string,
+  pressEnter: boolean,
+): Promise<{ url: string; title: string }> {
+  const chromium = await getChromium()
+  const browser = await chromium.connectOverCDP(connectUrl, { timeout: 20000 })
+  try {
+    const context = browser.contexts()[0]
+    const page = context?.pages()[0]
+    if (!page) return { url: "", title: "" }
+    if (text) {
+      await page.keyboard.type(text, { delay: 15 })
+    }
+    if (pressEnter) {
+      await page.keyboard.press("Enter")
+      // Give the resulting navigation/search a moment to settle.
+      await page.waitForTimeout(800)
+    }
+    return { url: page.url(), title: await page.title().catch(() => "") }
+  } finally {
     await browser.close()
   }
 }

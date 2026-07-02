@@ -9,6 +9,8 @@ import {
   Trash2,
   ArrowRight,
   ShieldCheck,
+  Keyboard,
+  CornerDownLeft,
 } from "lucide-react"
 import {
   getCloudStatus,
@@ -16,6 +18,7 @@ import {
   stopCloudBrowser,
   resetCloudBrowser,
   navigateCloud,
+  typeIntoCloud,
   type CloudStatus,
 } from "@/app/actions/cloud-browser"
 
@@ -34,6 +37,8 @@ export function CloudBrowser({
   const [error, setError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [disconnected, setDisconnected] = useState(false)
+  const [typeText, setTypeText] = useState("")
+  const [typePending, startType] = useTransition()
 
   // Browserbase Live View gửi postMessage này khi phiên mất kết nối. Nếu không
   // lắng nghe, người dùng sẽ thấy nguyên dialog gốc của Chrome DevTools
@@ -139,6 +144,28 @@ export function CloudBrowser({
         setAddress(res.url)
       } catch (err) {
         setError(err instanceof Error ? err.message : "Không thể mở trang")
+      }
+    })
+  }
+
+  // Gửi chữ vào ô đang focus trong trang (bàn phím ảo). pressEnter=true để
+  // xác nhận (vd. tìm kiếm Google, đăng nhập). Người dùng phải bấm vào ô nhập
+  // liệu bên trong live view trước, sau đó gõ ở đây rồi bấm gửi.
+  function handleType(pressEnter: boolean) {
+    if (!status?.running) return
+    if (!typeText && !pressEnter) return
+    setError(null)
+    startType(async () => {
+      try {
+        const res = await typeIntoCloud(deviceId, typeText, pressEnter)
+        if (res.error) {
+          setError(res.error)
+          return
+        }
+        if (res.url) setCurrentUrl(res.url)
+        setTypeText("")
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Không gửi được chữ")
       }
     })
   }
@@ -253,6 +280,43 @@ export function CloudBrowser({
             </button>
           ))}
         </div>
+
+        {status.running && (
+          <div className="flex items-center gap-2">
+            <div className="flex flex-1 items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+              <Keyboard className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <input
+                value={typeText}
+                onChange={(e) => setTypeText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+                    e.preventDefault()
+                    handleType(true)
+                  }
+                }}
+                placeholder="Gõ chữ vào ô đang chọn trên trang…"
+                className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              />
+              {typePending && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />}
+            </div>
+            <button
+              onClick={() => handleType(false)}
+              disabled={typePending || !typeText}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-40"
+            >
+              Gõ chữ
+            </button>
+            <button
+              onClick={() => handleType(true)}
+              disabled={typePending}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+              aria-label="Gửi và nhấn Enter"
+              title="Gửi và nhấn Enter"
+            >
+              <CornerDownLeft className="h-4 w-4" />
+            </button>
+          </div>
+        )}
 
         {(error || loadError) && (
           <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
