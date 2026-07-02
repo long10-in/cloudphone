@@ -91,11 +91,14 @@ export async function navigateSession(
   connectUrl: string,
   url: string,
 ): Promise<{ url: string; title: string }> {
-  const browser = await chromium.connectOverCDP(connectUrl)
+  // A connect timeout is CRITICAL on serverless: without it, a stalled CDP
+  // WebSocket hangs until the platform kills the whole function (surfacing as
+  // a generic "Server Components render" error that no try/catch can trap).
+  const browser = await chromium.connectOverCDP(connectUrl, { timeout: 20000 })
   try {
     const context = browser.contexts()[0]
     const page = context?.pages()[0] ?? (await context.newPage())
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 })
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 25000 })
     let title = ""
     try {
       title = await page.title()
@@ -113,7 +116,7 @@ export async function navigateSession(
 export async function readSessionPage(
   connectUrl: string,
 ): Promise<{ url: string; title: string }> {
-  const browser = await chromium.connectOverCDP(connectUrl)
+  const browser = await chromium.connectOverCDP(connectUrl, { timeout: 20000 })
   try {
     const context = browser.contexts()[0]
     const page = context?.pages()[0]

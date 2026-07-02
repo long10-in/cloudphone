@@ -120,13 +120,10 @@ export async function startCloudBrowser(deviceId: number): Promise<CloudStatus> 
       })
     }
 
-    // Land on a neutral start page (best-effort; the live view opens regardless).
-    try {
-      await navigateSession(session.connectUrl, "https://www.google.com")
-    } catch {
-      // navigation is best-effort — user can still navigate via the address bar
-    }
-
+    // IMPORTANT: do NOT drive playwright here. On serverless, a stalled CDP
+    // connection can hang until the platform kills the function, producing an
+    // uncatchable "Server Components render" error. We return the live view
+    // immediately; the user lands on a page via the address bar / quick links.
     return { enabled: true, running: true, liveViewUrl: session.liveViewUrl }
   } catch (e) {
     return { enabled: true, running: false, liveViewUrl: null, error: errMsg(e) }
