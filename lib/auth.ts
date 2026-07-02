@@ -31,6 +31,8 @@ export const auth = betterAuth({
     }),
   },
   trustedOrigins: [
+    // Optional extra origin (e.g. local testing of the production build).
+    ...(process.env.AUTH_EXTRA_TRUSTED_ORIGIN ? [process.env.AUTH_EXTRA_TRUSTED_ORIGIN] : []),
     ...(process.env.V0_RUNTIME_URL ? [process.env.V0_RUNTIME_URL] : []),
     ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
     ...(process.env.VERCEL_PROJECT_PRODUCTION_URL
