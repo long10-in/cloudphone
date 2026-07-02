@@ -33,6 +33,20 @@ export function CloudBrowser({
   const [navPending, startNav] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [disconnected, setDisconnected] = useState(false)
+
+  // Browserbase Live View gửi postMessage này khi phiên mất kết nối. Nếu không
+  // lắng nghe, người dùng sẽ thấy nguyên dialog gốc của Chrome DevTools
+  // ("Debugging connection was closed…") thay vì thông báo dễ hiểu.
+  useEffect(() => {
+    function handleMessage(event: MessageEvent) {
+      if (event.data === "browserbase-disconnected") {
+        setDisconnected(true)
+      }
+    }
+    window.addEventListener("message", handleMessage)
+    return () => window.removeEventListener("message", handleMessage)
+  }, [])
 
   useEffect(() => {
     getCloudStatus(deviceId)
@@ -49,6 +63,7 @@ export function CloudBrowser({
 
   function handleStart() {
     setError(null)
+    setDisconnected(false)
     startTransition(async () => {
       try {
         const s = await startCloudBrowser(deviceId)
@@ -249,13 +264,35 @@ export function CloudBrowser({
       {/* Live view */}
       <div className="relative aspect-[390/844] max-h-[70vh] w-full bg-black sm:aspect-auto sm:h-[70vh]">
         {status.running && status.liveViewUrl ? (
-          <iframe
-            src={status.liveViewUrl}
-            title={`Cloud Browser - ${deviceName}`}
-            className="h-full w-full"
-            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-pointer-lock allow-modals"
-            allow="clipboard-read; clipboard-write; camera; microphone; geolocation"
-          />
+          <>
+            <iframe
+              src={status.liveViewUrl}
+              title={`Cloud Browser - ${deviceName}`}
+              className="h-full w-full"
+              // Chỉ 2 quyền này theo đúng khuyến nghị chính thức của Browserbase.
+              // Các quyền dư thừa trước đây (allow-popups, allow-modals…) cho phép
+              // trang bên trong mở cửa sổ/điều hướng thoát khỏi khung live view.
+              sandbox="allow-same-origin allow-scripts"
+              allow="clipboard-read; clipboard-write"
+            />
+            {disconnected && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/90 px-6 text-center">
+                <p className="font-semibold text-white">Mất kết nối tới phiên trình duyệt</p>
+                <p className="max-w-xs text-sm text-white/70">
+                  Kết nối tới máy chủ đám mây bị gián đoạn. Bấm nút bên dưới để khởi động lại
+                  phiên.
+                </p>
+                <button
+                  onClick={handleStart}
+                  disabled={pending}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                  Kết nối lại
+                </button>
+              </div>
+            )}
+          </>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
             <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
