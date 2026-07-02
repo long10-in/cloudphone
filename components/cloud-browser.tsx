@@ -9,6 +9,8 @@ import {
   Trash2,
   ArrowRight,
   ShieldCheck,
+  Keyboard,
+  CornerDownLeft,
 } from "lucide-react"
 import {
   getCloudStatus,
@@ -16,6 +18,7 @@ import {
   stopCloudBrowser,
   resetCloudBrowser,
   navigateCloud,
+  typeIntoCloud,
   type CloudStatus,
 } from "@/app/actions/cloud-browser"
 
@@ -33,6 +36,22 @@ export function CloudBrowser({
   const [navPending, startNav] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [disconnected, setDisconnected] = useState(false)
+  const [typeText, setTypeText] = useState("")
+  const [typePending, startType] = useTransition()
+
+  // Browserbase Live View gửi postMessage này khi phiên mất kết nối. Nếu không
+  // lắng nghe, người dùng sẽ thấy nguyên dialog gốc của Chrome DevTools
+  // ("Debugging connection was closed…") thay vì thông báo dễ hiểu.
+  useEffect(() => {
+    function handleMessage(event: MessageEvent) {
+      if (event.data === "browserbase-disconnected") {
+        setDisconnected(true)
+      }
+    }
+    window.addEventListener("message", handleMessage)
+    return () => window.removeEventListener("message", handleMessage)
+  }, [])
 
   useEffect(() => {
     getCloudStatus(deviceId)
@@ -49,6 +68,7 @@ export function CloudBrowser({
 
   function handleStart() {
     setError(null)
+    setDisconnected(false)
     startTransition(async () => {
       try {
         const s = await startCloudBrowser(deviceId)
@@ -124,6 +144,28 @@ export function CloudBrowser({
         setAddress(res.url)
       } catch (err) {
         setError(err instanceof Error ? err.message : "Không thể mở trang")
+      }
+    })
+  }
+
+  // Gửi chữ vào ô đang focus trong trang (bàn phím ảo). pressEnter=true để
+  // xác nhận (vd. tìm kiếm Google, đăng nhập). Người dùng phải bấm vào ô nhập
+  // liệu bên trong live view trước, sau đó gõ ở đây rồi bấm gửi.
+  function handleType(pressEnter: boolean) {
+    if (!status?.running) return
+    if (!typeText && !pressEnter) return
+    setError(null)
+    startType(async () => {
+      try {
+        const res = await typeIntoCloud(deviceId, typeText, pressEnter)
+        if (res.error) {
+          setError(res.error)
+          return
+        }
+        if (res.url) setCurrentUrl(res.url)
+        setTypeText("")
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Không gửi được chữ")
       }
     })
   }
@@ -239,6 +281,43 @@ export function CloudBrowser({
           ))}
         </div>
 
+        {status.running && (
+          <div className="flex items-center gap-2">
+            <div className="flex flex-1 items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+              <Keyboard className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <input
+                value={typeText}
+                onChange={(e) => setTypeText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+                    e.preventDefault()
+                    handleType(true)
+                  }
+                }}
+                placeholder="Gõ chữ vào ô đang chọn trên trang…"
+                className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              />
+              {typePending && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />}
+            </div>
+            <button
+              onClick={() => handleType(false)}
+              disabled={typePending || !typeText}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-40"
+            >
+              Gõ chữ
+            </button>
+            <button
+              onClick={() => handleType(true)}
+              disabled={typePending}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+              aria-label="Gửi và nhấn Enter"
+              title="Gửi và nhấn Enter"
+            >
+              <CornerDownLeft className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
         {(error || loadError) && (
           <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
             {error || loadError}
@@ -249,13 +328,35 @@ export function CloudBrowser({
       {/* Live view */}
       <div className="relative aspect-[390/844] max-h-[70vh] w-full bg-black sm:aspect-auto sm:h-[70vh]">
         {status.running && status.liveViewUrl ? (
-          <iframe
-            src={status.liveViewUrl}
-            title={`Cloud Browser - ${deviceName}`}
-            className="h-full w-full"
-            sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-pointer-lock allow-modals"
-            allow="clipboard-read; clipboard-write; camera; microphone; geolocation"
-          />
+          <>
+            <iframe
+              src={status.liveViewUrl}
+              title={`Cloud Browser - ${deviceName}`}
+              className="h-full w-full"
+              // Chỉ 2 quyền này theo đúng khuyến nghị chính thức của Browserbase.
+              // Các quyền dư thừa trước đây (allow-popups, allow-modals…) cho phép
+              // trang bên trong mở cửa sổ/điều hướng thoát khỏi khung live view.
+              sandbox="allow-same-origin allow-scripts"
+              allow="clipboard-read; clipboard-write"
+            />
+            {disconnected && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/90 px-6 text-center">
+                <p className="font-semibold text-white">Mất kết nối tới phiên trình duyệt</p>
+                <p className="max-w-xs text-sm text-white/70">
+                  Kết nối tới máy chủ đám mây bị gián đoạn. Bấm nút bên dưới để khởi động lại
+                  phiên.
+                </p>
+                <button
+                  onClick={handleStart}
+                  disabled={pending}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                  Kết nối lại
+                </button>
+              </div>
+            )}
+          </>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
             <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
