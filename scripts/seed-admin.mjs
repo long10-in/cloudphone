@@ -4,11 +4,20 @@ import { user, account } from "../lib/db/schema.ts"
 import { eq } from "drizzle-orm"
 import { randomUUID } from "node:crypto"
 
-const ADMIN_EMAIL = "nguyenxuangame1@gmail.com"
-const ADMIN_PASSWORD = "Admin1028.1028#@"
-const ADMIN_NAME = "Quản trị viên"
+// SECURITY: credentials must NEVER be hardcoded here — this repo is public.
+// They are read from environment variables (set in the Vercel project / .env).
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
+const ADMIN_NAME = process.env.ADMIN_NAME || "Quản trị viên"
 
 async function main() {
+  if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+    console.error(
+      "[seed] Missing ADMIN_EMAIL or ADMIN_PASSWORD env vars. Set them before running this script.",
+    )
+    process.exit(1)
+  }
+
   const existing = await db.select().from(user).where(eq(user.email, ADMIN_EMAIL))
 
   const ctx = await auth.$context
