@@ -1,5 +1,15 @@
 import Browserbase from "@browserbasehq/sdk"
-import { chromium } from "playwright-core"
+
+// NOTE: playwright-core is intentionally NOT imported at the top level.
+// It is a heavy package with dynamic requires that can fail to load in the
+// serverless actions bundle. Importing it here would break EVERY function in
+// this module (status/start/stop/reset) — even the ones that never touch a
+// browser — because the whole module fails to initialize. We therefore load
+// it lazily, only inside the two functions that actually drive Chromium.
+async function getChromium() {
+  const { chromium } = await import("playwright-core")
+  return chromium
+}
 
 // IMPORTANT: read process.env at call time (not as a module-level const).
 // A top-level const can be evaluated during the build/bundle step and frozen
@@ -94,6 +104,7 @@ export async function navigateSession(
   // A connect timeout is CRITICAL on serverless: without it, a stalled CDP
   // WebSocket hangs until the platform kills the whole function (surfacing as
   // a generic "Server Components render" error that no try/catch can trap).
+  const chromium = await getChromium()
   const browser = await chromium.connectOverCDP(connectUrl, { timeout: 20000 })
   try {
     const context = browser.contexts()[0]
@@ -116,6 +127,7 @@ export async function navigateSession(
 export async function readSessionPage(
   connectUrl: string,
 ): Promise<{ url: string; title: string }> {
+  const chromium = await getChromium()
   const browser = await chromium.connectOverCDP(connectUrl, { timeout: 20000 })
   try {
     const context = browser.contexts()[0]
