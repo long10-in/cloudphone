@@ -32,11 +32,19 @@ export function CloudBrowser({
   const [pending, startTransition] = useTransition()
   const [navPending, startNav] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
     getCloudStatus(deviceId)
-      .then(setStatus)
-      .catch(() => setStatus({ enabled: false, running: false, liveViewUrl: null }))
+      .then((s) => {
+        setStatus(s)
+        setLoadError(null)
+      })
+      .catch((e) => {
+        // A real failure (DB/auth/API) — do NOT disguise it as "not configured".
+        setLoadError(e instanceof Error ? e.message : "Không tải được trạng thái")
+        setStatus({ enabled: true, running: false, liveViewUrl: null })
+      })
   }, [deviceId])
 
   function handleStart() {
@@ -215,8 +223,10 @@ export function CloudBrowser({
           ))}
         </div>
 
-        {error && (
-          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>
+        {(error || loadError) && (
+          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {error || loadError}
+          </p>
         )}
       </div>
 
