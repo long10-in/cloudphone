@@ -1,8 +1,13 @@
 import Browserbase from "@browserbasehq/sdk"
 import { chromium } from "playwright-core"
 
-export const BROWSERBASE_ENABLED =
-  !!process.env.BROWSERBASE_API_KEY && !!process.env.BROWSERBASE_PROJECT_ID
+// IMPORTANT: read process.env at call time (not as a module-level const).
+// A top-level const can be evaluated during the build/bundle step and frozen
+// to `false`, which made Cloud Browser show "chưa sẵn sàng" in production even
+// though the env vars were set. A function guarantees a runtime lookup.
+export function isBrowserbaseEnabled(): boolean {
+  return !!process.env.BROWSERBASE_API_KEY && !!process.env.BROWSERBASE_PROJECT_ID
+}
 
 let _client: Browserbase | null = null
 
