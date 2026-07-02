@@ -8,6 +8,10 @@ import { device, browserSession, browserProfile } from "@/lib/db/schema"
 import { DashboardNav } from "@/components/dashboard-nav"
 import { DeviceWorkspace } from "@/components/device-workspace"
 
+// Cloud Browser server actions run within this route's function and drive a
+// remote Chromium over CDP, which can take longer than the default limit.
+export const maxDuration = 60
+
 export default async function DevicePage({
   params,
 }: {

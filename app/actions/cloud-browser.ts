@@ -77,12 +77,20 @@ export async function startCloudBrowser(deviceId: number): Promise<CloudStatus> 
   }
 
   // Ensure the device has its own persistent context (isolated identity).
+  // If a stale context id can't be reused, fall back to a fresh one.
   let contextId = row?.contextId ?? null
   if (!contextId) {
     contextId = await createContext()
   }
 
-  const session = await createSession(contextId)
+  let session
+  try {
+    session = await createSession(contextId)
+  } catch {
+    // The stored context may be invalid/expired — retry once with a new one.
+    contextId = await createContext()
+    session = await createSession(contextId)
+  }
 
   if (row) {
     await db
@@ -98,11 +106,11 @@ export async function startCloudBrowser(deviceId: number): Promise<CloudStatus> 
     })
   }
 
-  // Land on a neutral start page.
+  // Land on a neutral start page (best-effort; the live view opens regardless).
   try {
     await navigateSession(session.connectUrl, "https://www.google.com")
   } catch {
-    // navigation is best-effort; the live view still opens
+    // navigation is best-effort — user can still navigate via the address bar
   }
 
   return { enabled: true, running: true, liveViewUrl: session.liveViewUrl }
