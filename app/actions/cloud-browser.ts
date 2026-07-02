@@ -6,7 +6,7 @@ import { db } from "@/lib/db"
 import { device, cloudBrowser } from "@/lib/db/schema"
 import { auth } from "@/lib/auth"
 import {
-  BROWSERBASE_ENABLED,
+  isBrowserbaseEnabled,
   createContext,
   deleteContext,
   createSession,
@@ -50,7 +50,7 @@ export type CloudStatus = {
 
 export async function getCloudStatus(deviceId: number): Promise<CloudStatus> {
   await assertAccess(deviceId)
-  if (!BROWSERBASE_ENABLED) {
+  if (!isBrowserbaseEnabled()) {
     return { enabled: false, running: false, liveViewUrl: null }
   }
   const row = await getRow(deviceId)
@@ -64,7 +64,7 @@ export async function getCloudStatus(deviceId: number): Promise<CloudStatus> {
 // Start (or resume) a real cloud Chromium for this device.
 export async function startCloudBrowser(deviceId: number): Promise<CloudStatus> {
   const { user } = await assertAccess(deviceId)
-  if (!BROWSERBASE_ENABLED) {
+  if (!isBrowserbaseEnabled()) {
     return { enabled: false, running: false, liveViewUrl: null }
   }
 
@@ -149,7 +149,7 @@ export async function stopCloudBrowser(deviceId: number): Promise<CloudStatus> {
       .set({ sessionId: null, updatedAt: new Date() })
       .where(eq(cloudBrowser.deviceId, deviceId))
   }
-  return { enabled: BROWSERBASE_ENABLED, running: false, liveViewUrl: null }
+  return { enabled: isBrowserbaseEnabled(), running: false, liveViewUrl: null }
 }
 
 // Wipe all stored data: end session AND delete the persistent context.
@@ -163,7 +163,7 @@ export async function resetCloudBrowser(deviceId: number): Promise<CloudStatus> 
     await deleteContext(row.contextId)
   }
   // Fresh context for a clean identity next start.
-  const contextId = BROWSERBASE_ENABLED ? await createContext() : null
+  const contextId = isBrowserbaseEnabled() ? await createContext() : null
   if (row) {
     await db
       .update(cloudBrowser)
@@ -172,5 +172,5 @@ export async function resetCloudBrowser(deviceId: number): Promise<CloudStatus> 
   } else {
     await db.insert(cloudBrowser).values({ deviceId, userId: user.id, contextId })
   }
-  return { enabled: BROWSERBASE_ENABLED, running: false, liveViewUrl: null }
+  return { enabled: isBrowserbaseEnabled(), running: false, liveViewUrl: null }
 }
