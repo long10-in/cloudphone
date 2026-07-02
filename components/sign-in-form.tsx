@@ -5,6 +5,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { CloudCog, Loader2 } from "lucide-react"
 import { authClient } from "@/lib/auth-client"
+import { APP_VERSION } from "@/lib/version"
 
 export function SignInForm() {
   const router = useRouter()
@@ -104,6 +105,10 @@ export function SignInForm() {
             Đăng ký tài khoản hiện đang đóng. Vui lòng liên hệ quản trị viên để được cấp tài khoản.
           </p>
         </form>
+
+        <p className="mt-6 text-center text-xs text-muted-foreground">
+          Phiên bản {APP_VERSION}
+        </p>
       </div>
     </main>
   )
