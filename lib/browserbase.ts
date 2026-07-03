@@ -121,7 +121,11 @@ export async function navigateSession(
     }
     return { url: page.url(), title }
   } finally {
-    // Detach without closing the remote browser so the session keeps running.
+    // For a connectOverCDP browser, Playwright's close() only closes OUR
+    // client WebSocket (it does NOT send Browser.close to force-quit the
+    // remote session), so the Browserbase session and its Live View keep
+    // running. We still release our socket so serverless invocations don't
+    // leak connections.
     await browser.close()
   }
 }

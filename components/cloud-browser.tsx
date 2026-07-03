@@ -37,6 +37,11 @@ export function CloudBrowser({
   const [error, setError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [disconnected, setDisconnected] = useState(false)
+  const [reconnecting, setReconnecting] = useState(false)
+  // Bumping this remounts the Live View iframe so the DevTools frontend opens a
+  // fresh WebSocket to the (still running) session — used to auto-recover from
+  // transient "WebSocket disconnected" blips without restarting the session.
+  const [liveViewKey, setLiveViewKey] = useState(0)
   const [typeText, setTypeText] = useState("")
   const [typePending, startType] = useTransition()
 
@@ -44,14 +49,38 @@ export function CloudBrowser({
   // lắng nghe, người dùng sẽ thấy nguyên dialog gốc của Chrome DevTools
   // ("Debugging connection was closed…") thay vì thông báo dễ hiểu.
   useEffect(() => {
+    let cancelled = false
     function handleMessage(event: MessageEvent) {
-      if (event.data === "browserbase-disconnected") {
-        setDisconnected(true)
-      }
+      if (event.data !== "browserbase-disconnected") return
+      // The DevTools live view lost its socket. This is often just a transient
+      // blip (e.g. right after a navigation/keystroke over CDP) while the cloud
+      // session is still alive. Check the session first: if it's still running,
+      // silently remount the iframe to reconnect. Only surface the full
+      // "session lost" overlay when the session has actually ended.
+      setReconnecting(true)
+      getCloudStatus(deviceId)
+        .then((s) => {
+          if (cancelled) return
+          if (s.running) {
+            setLiveViewKey((k) => k + 1)
+            setDisconnected(false)
+          } else {
+            setDisconnected(true)
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setDisconnected(true)
+        })
+        .finally(() => {
+          if (!cancelled) setReconnecting(false)
+        })
     }
     window.addEventListener("message", handleMessage)
-    return () => window.removeEventListener("message", handleMessage)
-  }, [])
+    return () => {
+      cancelled = true
+      window.removeEventListener("message", handleMessage)
+    }
+  }, [deviceId])
 
   useEffect(() => {
     getCloudStatus(deviceId)
@@ -330,6 +359,7 @@ export function CloudBrowser({
         {status.running && status.liveViewUrl ? (
           <>
             <iframe
+              key={liveViewKey}
               src={status.liveViewUrl}
               title={`Cloud Browser - ${deviceName}`}
               className="h-full w-full"
@@ -339,6 +369,12 @@ export function CloudBrowser({
               sandbox="allow-same-origin allow-scripts"
               allow="clipboard-read; clipboard-write"
             />
+            {reconnecting && !disconnected && (
+              <div className="pointer-events-none absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 text-xs font-medium text-white">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Đang nối lại…
+              </div>
+            )}
             {disconnected && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/90 px-6 text-center">
                 <p className="font-semibold text-white">Mất kết nối tới phiên trình duyệt</p>
