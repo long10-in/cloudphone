@@ -98,6 +98,38 @@ export async function getLiveViewUrl(sessionId: string): Promise<string> {
   return links.debuggerFullscreenUrl
 }
 
+// Detach our Playwright client from a connectOverCDP browser WITHOUT killing
+// the shared remote session.
+//
+// WHY NOT browser.close(): Playwright docs state that for a browser obtained
+// via connectOverCDP, close() "clears all created contexts belonging to this
+// browser and disconnects from the browser server ... similar to
+// force-quitting the browser." Browserbase's Live View (the DevTools iframe)
+// is attached to the SAME shared CDP browser/target. So calling close() tears
+// down the debugger connection the Live View relies on, producing the
+// "Debugging connection was closed. Reason: WebSocket disconnected" error the
+// user sees right after typing / pressing Enter.
+//
+// Instead we only close OUR client-side transport socket. This frees the
+// serverless connection without sending any force-quit command to the remote
+// browser, so the session and its Live View keep running.
+//
+// DO NOT replace this with browser.close(). See the note above.
+async function detachCdp(
+  browser: Awaited<ReturnType<Awaited<ReturnType<typeof getChromium>>["connectOverCDP"]>>,
+): Promise<void> {
+  try {
+    const conn = (browser as unknown as { _connection?: { close?: () => void } })._connection
+    if (conn?.close) {
+      conn.close()
+      return
+    }
+  } catch {
+    // If internals change, fall through: letting the socket be GC'd when the
+    // function returns is still safer than force-quitting the shared browser.
+  }
+}
+
 // Drive the live session to a URL over CDP (Playwright).
 // The live-view iframe reflects the change instantly for the user.
 export async function navigateSession(
@@ -121,12 +153,9 @@ export async function navigateSession(
     }
     return { url: page.url(), title }
   } finally {
-    // For a connectOverCDP browser, Playwright's close() only closes OUR
-    // client WebSocket (it does NOT send Browser.close to force-quit the
-    // remote session), so the Browserbase session and its Live View keep
-    // running. We still release our socket so serverless invocations don't
-    // leak connections.
-    await browser.close()
+    // See detachCdp: do NOT use browser.close() — it force-quits the shared
+    // session and kills the Live View WebSocket.
+    await detachCdp(browser)
   }
 }
 
@@ -154,7 +183,8 @@ export async function typeSession(
     }
     return { url: page.url(), title: await page.title().catch(() => "") }
   } finally {
-    await browser.close()
+    // See detachCdp: do NOT use browser.close() here.
+    await detachCdp(browser)
   }
 }
 
@@ -170,7 +200,8 @@ export async function readSessionPage(
     if (!page) return { url: "", title: "" }
     return { url: page.url(), title: await page.title().catch(() => "") }
   } finally {
-    await browser.close()
+    // See detachCdp: do NOT use browser.close() here.
+    await detachCdp(browser)
   }
 }
 
