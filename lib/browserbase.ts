@@ -98,37 +98,28 @@ export async function getLiveViewUrl(sessionId: string): Promise<string> {
   return links.debuggerFullscreenUrl
 }
 
-// Detach our Playwright client from a connectOverCDP browser WITHOUT killing
-// the shared remote session.
+// ============================================================================
+// CRITICAL — DO NOT ADD ANY "cleanup"/"teardown" AFTER USING `browser`.
+// ============================================================================
+// Browserbase's Live View (the DevTools iframe) and our Playwright client
+// share the SAME remote CDP session. Every attempt to "tidy up" the client
+// connection has broken that shared session and caused a recurring bug:
 //
-// WHY NOT browser.close(): Playwright docs state that for a browser obtained
-// via connectOverCDP, close() "clears all created contexts belonging to this
-// browser and disconnects from the browser server ... similar to
-// force-quitting the browser." Browserbase's Live View (the DevTools iframe)
-// is attached to the SAME shared CDP browser/target. So calling close() tears
-// down the debugger connection the Live View relies on, producing the
-// "Debugging connection was closed. Reason: WebSocket disconnected" error the
-// user sees right after typing / pressing Enter.
+//   1. browser.close()            -> "Debugging connection was closed.
+//                                      Reason: WebSocket disconnected"
+//                                      (docs: close() on a connectOverCDP
+//                                      browser is "similar to force-quitting")
+//   2. browser._connection.close() (private API) -> the server treats it as a
+//                                      client crash, releases the session, and
+//                                      the NEXT action fails with
+//                                      "Target page, context or browser has
+//                                      been closed".
 //
-// Instead we only close OUR client-side transport socket. This frees the
-// serverless connection without sending any force-quit command to the remote
-// browser, so the session and its Live View keep running.
-//
-// DO NOT replace this with browser.close(). See the note above.
-async function detachCdp(
-  browser: Awaited<ReturnType<Awaited<ReturnType<typeof getChromium>>["connectOverCDP"]>>,
-): Promise<void> {
-  try {
-    const conn = (browser as unknown as { _connection?: { close?: () => void } })._connection
-    if (conn?.close) {
-      conn.close()
-      return
-    }
-  } catch {
-    // If internals change, fall through: letting the socket be GC'd when the
-    // function returns is still safer than force-quitting the shared browser.
-  }
-}
+// The ONLY reliable behavior is: connect, do the work, return. Let the client
+// socket be garbage-collected when the serverless function returns. Do NOT
+// call browser.close(), browser.disconnect(), context.close(), page.close(),
+// or poke any private field. If you think you need cleanup here, you don't.
+// ============================================================================
 
 // Drive the live session to a URL over CDP (Playwright).
 // The live-view iframe reflects the change instantly for the user.
@@ -141,22 +132,22 @@ export async function navigateSession(
   // a generic "Server Components render" error that no try/catch can trap).
   const chromium = await getChromium()
   const browser = await chromium.connectOverCDP(connectUrl, { timeout: 20000 })
+  // IMPORTANT: after using `browser`, do NOT call any teardown helper.
+  // See the big note above `connectAndUse` / navigateSession for the full
+  // history — both browser.close() and poking browser._connection.close()
+  // corrupt the shared session and break the NEXT action ("Target page,
+  // context or browser has been closed"). We simply let the client socket be
+  // garbage-collected when the serverless function returns.
+  const context = browser.contexts()[0]
+  const page = context?.pages()[0] ?? (await context.newPage())
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 25000 })
+  let title = ""
   try {
-    const context = browser.contexts()[0]
-    const page = context?.pages()[0] ?? (await context.newPage())
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 25000 })
-    let title = ""
-    try {
-      title = await page.title()
-    } catch {
-      title = ""
-    }
-    return { url: page.url(), title }
-  } finally {
-    // See detachCdp: do NOT use browser.close() — it force-quits the shared
-    // session and kills the Live View WebSocket.
-    await detachCdp(browser)
+    title = await page.title()
+  } catch {
+    title = ""
   }
+  return { url: page.url(), title }
 }
 
 // Type text (and optionally press Enter) into whatever element is currently
@@ -169,23 +160,19 @@ export async function typeSession(
 ): Promise<{ url: string; title: string }> {
   const chromium = await getChromium()
   const browser = await chromium.connectOverCDP(connectUrl, { timeout: 20000 })
-  try {
-    const context = browser.contexts()[0]
-    const page = context?.pages()[0]
-    if (!page) return { url: "", title: "" }
-    if (text) {
-      await page.keyboard.type(text, { delay: 15 })
-    }
-    if (pressEnter) {
-      await page.keyboard.press("Enter")
-      // Give the resulting navigation/search a moment to settle.
-      await page.waitForTimeout(800)
-    }
-    return { url: page.url(), title: await page.title().catch(() => "") }
-  } finally {
-    // See detachCdp: do NOT use browser.close() here.
-    await detachCdp(browser)
+  // Do NOT tear down `browser` afterwards — see the note in navigateSession.
+  const context = browser.contexts()[0]
+  const page = context?.pages()[0]
+  if (!page) return { url: "", title: "" }
+  if (text) {
+    await page.keyboard.type(text, { delay: 15 })
   }
+  if (pressEnter) {
+    await page.keyboard.press("Enter")
+    // Give the resulting navigation/search a moment to settle.
+    await page.waitForTimeout(800)
+  }
+  return { url: page.url(), title: await page.title().catch(() => "") }
 }
 
 // Read the current page URL/title from a running session.
@@ -194,15 +181,11 @@ export async function readSessionPage(
 ): Promise<{ url: string; title: string }> {
   const chromium = await getChromium()
   const browser = await chromium.connectOverCDP(connectUrl, { timeout: 20000 })
-  try {
-    const context = browser.contexts()[0]
-    const page = context?.pages()[0]
-    if (!page) return { url: "", title: "" }
-    return { url: page.url(), title: await page.title().catch(() => "") }
-  } finally {
-    // See detachCdp: do NOT use browser.close() here.
-    await detachCdp(browser)
-  }
+  // Do NOT tear down `browser` afterwards — see the note in navigateSession.
+  const context = browser.contexts()[0]
+  const page = context?.pages()[0]
+  if (!page) return { url: "", title: "" }
+  return { url: page.url(), title: await page.title().catch(() => "") }
 }
 
 // Gracefully end a session (context persists for next time).
